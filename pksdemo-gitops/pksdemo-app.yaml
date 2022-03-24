@@ -1,0 +1,14 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pks
+  namespace: argocd
+spec:
+  destination:
+    namespace: myapp
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: appset
+    repoURL: git@gitlab.haas-495.pez.vmware.com:jeffrey/pksdemo-gitops.git
+    targetRevision: HEAD
