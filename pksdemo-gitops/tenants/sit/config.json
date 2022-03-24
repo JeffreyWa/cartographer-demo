@@ -1,0 +1,14 @@
+{
+  "env": {
+    "owner": "contact@vmw.com",
+    "name": "pksdemo-sit",
+    "id": "sit",
+    "autosync": true
+  },
+  "k8s_cluster": {
+    "owner": "admin@vmw.com",
+    "name": "pksdemo-sit",
+    "address": "https://kubernetes.default.svc",
+    "namespace": "myapp"
+  }
+}

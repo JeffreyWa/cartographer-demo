@@ -1,0 +1,70 @@
+{{- if eq .Values.runtime "cn" -}}
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "pksdemo.fullname" . -}}
+{{- $svcPort := .Values.service.port -}}
+{{- $ingDomain := .Values.ingress.domain -}}
+{{- $deployStrategy := .Values.deployStrategy -}}
+{{- $svcPort := .Values.service.port -}}
+{{- if semverCompare ">=1.14-0" .Capabilities.KubeVersion.GitVersion -}}
+apiVersion: networking.k8s.io/v1
+{{- else -}}
+apiVersion: extensions/v1beta1
+{{- end }}
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+{{ include "pksdemo.labels" . | indent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+{{- if .Values.ingress.tls }}
+  tls:
+  {{- range .Values.ingress.tls }}
+    - hosts:
+      {{- range .hosts }}
+        - "{{ . }}.{{ $ingDomain }}"
+      {{- end }}
+      secretName: {{ .secretName }}
+    {{- if ne $deployStrategy "rolling" }}
+    - hosts:
+      {{- range .hosts }}
+        - "{{ . }}-preview.{{ $ingDomain }}"
+      {{- end }}
+      secretName: {{ .secretName }}-preview
+    {{- end }}
+  {{- end }}
+{{- end }}
+  rules:
+  {{- range .Values.ingress.hosts }}
+    - host: "{{ .host }}.{{ $ingDomain }}"
+      http:
+        paths:
+        {{- range .paths }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ $svcPort }}
+        {{- end }}
+    {{- if ne $deployStrategy "rolling" }}
+    - host: "{{ .host }}-preview.{{ $ingDomain }}"
+      http:
+        paths:
+        {{- range .paths }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-preview
+                port:
+                  number: {{ $svcPort }}
+        {{- end }}
+    {{- end }}        
+  {{- end }}
+{{- end }}
+{{- end }}

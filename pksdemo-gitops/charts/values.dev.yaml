@@ -1,0 +1,107 @@
+# Default values for pksdemo.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+# Runtime: cn for cloudnative; kn for knative
+runtime: "kn"
+replicaCount: 4
+image:
+  repository: harbor.haas-495.pez.vmware.com/apps/pksdemo@sha256:7ef68ff1cf212cbaa0f15213805185e8a2bad6c1319af1969634a844c37f61a9
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name:
+podSecurityContext: {}
+# fsGroup: 2000
+
+# Deploy policy: rolling, bluegrenn(bg), canary
+deployStrategy: "bg"
+# Wether auto prompt to green
+autoPromot: false 
+###Canary deployment
+canary:
+  experiment: true
+  steps:
+  - experiment:
+      duration: 5m
+      templates:
+        - name: canary-preview
+          specRef: canary
+          # Selector and metadata are overwritten to be something different from the rollout's
+          # spec.selector. This allows the preview stack to be reachable through a different
+          # service without receiving production traffic.
+          selector:
+            matchLabels:
+              app: pksdemo-preview
+          metadata:
+            labels:
+              app: pksdemo-preview  
+  - setWeight: 20
+  - pause:
+      duration: 100s
+  - setWeight: 40
+  - pause: {}
+  - setWeight: 60
+  - pause:
+      duration: 100s
+  - setWeight: 80
+  - pause:
+      duration: 100s
+securityContext: {}
+# capabilities:
+#   drop:
+#   - ALL
+# readOnlyRootFilesystem: true
+# runAsNonRoot: true
+# runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 8080
+  name: pksdemo
+  env: {}
+ingress:
+  enabled: true
+  domain: "app.haas-495.pez.vmware.com"
+  annotations:
+    cert-manager.io/cluster-issuer: tls-selfsigned-issuer
+    ingress.kubernetes.io/force-ssl-redirect: "true"
+    kubernetes.io/ingress.class: contour    
+  # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: pksdemo-dev
+      paths:
+        - /
+  tls:
+    - secretName: pksdemo-dev
+      hosts:
+        - pksdemo-dev
+resources: {}
+# We usually recommend not to specify default resources and to leave this as a conscious
+# choice for the user. This also increases chances charts run on environments with little
+# resources, such as Minikube. If you do want to specify resources, uncomment the following
+# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+# limits:
+#   cpu: 100m
+#   memory: 128Mi
+# requests:
+#   cpu: 100m
+#   memory: 128Mi
+knative:
+  traffic:
+  - tag: blue
+    revisionName: pksdemo-00001
+    percent: 100
+  - tag: green
+    revisionName: pksdemo-00002
+    percent: 0
+
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

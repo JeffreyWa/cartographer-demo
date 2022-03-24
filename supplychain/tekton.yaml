@@ -1,0 +1,139 @@
+---
+# Copyright 2021 VMware
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+#@ load("@ytt:data", "data")
+
+apiVersion: carto.run/v1alpha1
+kind: ClusterTemplate
+metadata:
+  name: update-image-tag
+spec:
+  params:
+    - name: git_writer_username
+      default: #@ data.values.git_writer.username
+    - name: git_writer_user_email
+      default: #@ data.values.git_writer.user_email
+    - name: git_writer_commit_message
+      default: #@ data.values.git_writer.message
+    - name: git_writer_ssh_user
+      default: #@ data.values.git_writer.ssh_user
+    - name: git_writer_server
+      default: #@ data.values.git_writer.server
+    - name: git_writer_port
+      default: #@ data.values.git_writer.port
+    - name: git_writer_repository
+      default: #@ data.values.git_writer.repository
+    - name: git_writer_branch
+      default: #@ data.values.git_writer.branch
+    - name: git_writer_skip_host_checking
+      default: false
+    - name: git_writer_ssh_variant
+      default: ssh
+    - name: deploy-env
+      default: $(workload.spec.params[?(@.name=="env")].value)$
+      #default: dev
+    - name: image-tag
+      default: $(images.image.image)$
+    - name: workload-name
+      default: $(workload.metadata.name)$
+  template:
+    apiVersion: carto.run/v1alpha1
+    kind: Runnable
+    metadata:
+      name: $(workload.metadata.name)$-git-writer
+    spec:
+      serviceAccountName: #@ data.values.service_account_name
+      runTemplateRef:
+        name: update-image-tag
+
+      inputs:
+        git_username: $(params.git_writer_username)$
+        git_user_email: $(params.git_writer_user_email)$
+        commit_message: $(params.git_writer_commit_message)$
+        git_ssh_user: $(params.git_writer_ssh_user)$
+        git_server: $(params.git_writer_server)$
+        git_server_port: $(params.git_writer_port)$
+        git_repository: $(params.git_writer_repository)$
+        branch: $(params.git_writer_branch)$
+        skip_host_checking: $(params.git_writer_skip_host_checking)$
+        git_ssh_variant: $(params.git_writer_ssh_variant)$
+        deploy-env: $(params.deploy-env)$
+        image-tag: $(params.image-tag)$
+        workload-name: $(params.workload-name)$
+---
+apiVersion: carto.run/v1alpha1
+kind: ClusterRunTemplate
+metadata:
+  name: update-image-tag
+spec:
+  serviceAccountName: #@ data.values.service_account_name
+  template:
+    apiVersion: tekton.dev/v1beta1
+    kind: TaskRun
+    metadata:
+      generateName: $(runnable.metadata.name)$-
+    spec:
+      taskRef:
+        name: git-cli
+      workspaces:
+        - name: source
+          emptyDir: { }
+        - name: input
+          emptyDir: { }
+        - name: ssh-directory
+          secret:
+            secretName: tekton-ssh-cred
+      params:
+        - name: GIT_USER_NAME
+          value: $(runnable.spec.inputs.git_username)$
+        - name: GIT_USER_EMAIL
+          value: $(runnable.spec.inputs.git_user_email)$
+        - name: USER_HOME
+          value: /root
+        - name: GIT_SCRIPT
+          value: |
+            export COMMIT_MESSAGE="$(runnable.spec.inputs.commit_message)$"
+            export IMAGETAG="$(runnable.spec.inputs.image-tag)$"
+            export BRANCH="$(runnable.spec.inputs.branch)$"
+            export DEPLOY_ENV="$(runnable.spec.inputs.deploy-env)$"
+            export WORKDIR="$(runnable.spec.inputs.workload-name)$-gitops/charts"
+            if [[ -n "$(runnable.spec.inputs.skip_host_checking)$" && "$(runnable.spec.inputs.skip_host_checking)$" = true ]]
+            then
+              export GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
+            fi
+            if [[ -n "$(runnable.spec.inputs.git_ssh_variant)$" ]]
+            then
+              export GIT_SSH_VARIANT="$(runnable.spec.inputs.git_ssh_variant)$"
+            fi
+            ls -al /root/.ssh
+            cat /root/.ssh/known_hosts
+            cat /root/.ssh/ssh-privatekey
+
+            export GIT_SSH_COMMAND="ssh -i /root/.ssh/ssh-privatekey" 
+            if [[ -n "$(runnable.spec.inputs.git_server_port)$" ]]; then
+              git clone git@$(runnable.spec.inputs.git_server)$:$(runnable.spec.inputs.git_server_port)$/$(runnable.spec.inputs.git_repository)$/$(runnable.spec.inputs.workload-name)$-gitops.git
+            else
+              git clone git@$(runnable.spec.inputs.git_server)$:$(runnable.spec.inputs.git_repository)$/$(runnable.spec.inputs.workload-name)$-gitops.git
+            fi
+            cd $WORKDIR
+            export TARGET_FILE="values.$(runnable.spec.inputs.deploy-env)$.yaml"
+            SUB=$(echo $IMAGETAG | sed 's/\//\\\//g')
+            sed -i "/^image:/,/^ *[^:]*:/s/repository:.*/repository: $SUB/" $TARGET_FILE
+            cd ..
+            git add .
+            git commit -m "$COMMIT_MESSAGE"
+            git push
+
+

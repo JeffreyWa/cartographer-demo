@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: pksdemo-apps
+  namespace: argocd
+spec:
+  generators:
+    - git:
+        repoURL: git@gitlab.haas-495.pez.vmware.com:jeffrey/pksdemo-gitops.git
+        revision: master
+        files:
+          - path: "tenants/**/config.json"
+  template:
+    metadata:
+      name: '{{env.name}}'
+    spec:
+      project: default
+      source:
+        repoURL: git@gitlab.haas-495.pez.vmware.com:jeffrey/pksdemo-gitops.git
+        targetRevision: master
+        path: 'charts'
+        helm:
+          valueFiles:
+            - values.{{env.id}}.yaml
+      destination:
+        server: '{{k8s_cluster.address}}'
+        namespace: '{{k8s_cluster.namespace}}'
+      syncPolicy: {}
+        #automated: {}
