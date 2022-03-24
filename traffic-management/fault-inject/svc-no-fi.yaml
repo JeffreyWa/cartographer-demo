@@ -1,0 +1,16 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: ft-ingress
+spec:
+  hosts:
+  - "fi.haas-495.pez.vmware.com"
+  gateways:
+  - frontend-gateway
+  http:
+  - route:
+    - destination:
+        host: fault-injection
+        port:
+          number: 80
+
